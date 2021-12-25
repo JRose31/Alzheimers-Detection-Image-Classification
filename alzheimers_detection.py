@@ -103,3 +103,32 @@ model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accur
 
 model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test), batch_size=64)
 
+model.evaluate(X_test, y_test)
+
+def make_ts_prediction(idx):
+    # map index/encoded value with stage label
+    label_dict = {0 : 'NonDemented',
+                  1 : 'VeryMildDemented',
+                  2 : 'MildDemented',
+                  3 : 'ModerateDemented'}
+    
+    # Make prediction and save prediction and true value as labels
+    ts_pred = model.predict(X_test[idx:idx+1])
+    pred_label = label_dict[np.argmax(ts_pred)]
+    true_label = label_dict[np.argmax(y_test[idx:idx+1])]
+    
+    # Compare labels, print prediction values
+    if pred_label == true_label:
+        print(ts_pred)
+        return f'Correct prediction on {true_label}'
+    else:
+        print(ts_pred)
+        return f'False prediction on {true_label}'
+    
+    
+# Make some predictions 
+for idx in range(800,810):
+    print(make_ts_prediction(idx))    
+
+for idx in range(1150,1160):
+    print(make_ts_prediction(idx))
