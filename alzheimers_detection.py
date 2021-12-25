@@ -10,6 +10,7 @@ import cv2
 import glob
 import matplotlib.pyplot as plt
 import time
+import tensorflow as tf
 import keras
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten
@@ -83,10 +84,10 @@ for n in range(1,21):
     print(f'Label - {y_test.iloc[-n]}')
     
 model = Sequential()
-model.add(Conv2D(filters=16, kernel_size=(3, 3), activation="relu", input_shape=(100, 100, 1)))
+model.add(Conv2D(filters=32, kernel_size=(3, 3), activation="relu", input_shape=(100, 100, 1)))
 model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.25))
-model.add(Conv2D(filters=32, kernel_size=(3, 3), activation='relu'))
+model.add(Conv2D(filters=64, kernel_size=(3, 3), activation='relu'))
 model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.25))
 model.add(Flatten())
@@ -101,3 +102,4 @@ model.summary()
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test), batch_size=64)
+
