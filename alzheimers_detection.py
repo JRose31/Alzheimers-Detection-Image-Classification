@@ -5,10 +5,16 @@ Created on Thu Dec 23 18:30:44 2021
 @author: jrose
 """
 import numpy as np
+import pandas as pd
 import cv2
 import glob
 import matplotlib.pyplot as plt
 import time
+import keras
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Conv2D, MaxPooling2D
+from keras.preprocessing import image
 
 def cv2_read_path_train(set_type, stages):
     ''' Processes images given the file path and naming conventions'''
@@ -46,8 +52,16 @@ all_stages = ['NonDemented', 'VeryMildDemented', 'MildDemented', 'ModerateDement
 # Create trainng sets
 X_train, y_train = cv2_read_path_train(set_type='train', stages=all_stages)
 
+# convert labels to binary identification
+train_labels = pd.Series(y_train)
+y_train = pd.get_dummies(train_labels)
+
 # Create testing sets
 X_test, y_test = cv2_read_path_train(set_type='test', stages=all_stages)
+
+# convert labels to binary identification
+test_labels = pd.Series(y_test)
+y_test = pd.get_dummies(test_labels)
 
 # Function to show image from dataset
 def show_sample(data, index):
@@ -58,7 +72,7 @@ def show_sample(data, index):
 print('Training Set:')
 for n in range(1,21):
     show_sample(X_train, -n)
-    print(f'Label - {y_train[-n]}')
+    print(f'Label - {y_train.iloc[-n]}')
     
 time.sleep(3)
 
@@ -66,5 +80,24 @@ time.sleep(3)
 print('Testing Set:')
 for n in range(1,21):
     show_sample(X_test, -n)
-    print(f'Label - {y_test[-n]}')
+    print(f'Label - {y_test.iloc[-n]}')
     
+model = Sequential()
+model.add(Conv2D(filters=16, kernel_size=(3, 3), activation="relu", input_shape=(100, 100, 1)))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Dropout(0.25))
+model.add(Conv2D(filters=32, kernel_size=(3, 3), activation='relu'))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+model.add(Dropout(0.25))
+model.add(Flatten())
+model.add(Dense(128, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(64, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(4, activation='softmax'))
+
+model.summary()
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test), batch_size=64)
