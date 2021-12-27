@@ -38,7 +38,7 @@ def cv2_read_path_train(set_type, stages):
         for filename in glob.glob(f'Alzheimers_Dataset/{set_type}/{stage}/*.jpg'):
             # Read image
             IMG_SIZE = 100
-            img = cv2.imread(filename, 0)
+            img = cv2.imread(filename, cv2.COLOR_BGR2RGB)
             new_array = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
             # Add image to list, SCALED
             image_array.append(new_array.reshape(-1, IMG_SIZE, IMG_SIZE, 1)/255)
@@ -65,35 +65,38 @@ test_labels = pd.Series(y_test)
 y_test = pd.get_dummies(test_labels)
 
 # Function to show image from dataset
-def show_sample(data, index):
-     plt.imshow(data[index], cmap=plt.cm.binary)
+def show_sample(data, index, label='Empty'):
+     plt.imshow(data[index], cmap=plt.cm.plasma)
+     plt.title(f"[{index}] : {label}")
      plt.show()
 
 # View some TRAINING MRI scans
-print('Training Set:')
+print('Training Set...')
 for n in range(1,21):
-    show_sample(X_train, -n)
-    print(f'Label - {y_train.iloc[-n]}')
-    
+    sample_label = np.argmax(y_train.iloc[n])
+    show_sample(X_train, n, label=sample_label)
+print('Complete...') 
+
 time.sleep(3)
 
 # View some TESTING MRI scans
-print('Testing Set:')
+print('Testing Set...')
 for n in range(1,21):
-    show_sample(X_test, -n)
-    print(f'Label - {y_test.iloc[-n]}')
+    sample_label = np.argmax(y_test.iloc[-n])
+    show_sample(X_test, -n, label=sample_label)
+print('Complete...')
     
 model = Sequential()
-model.add(Conv2D(filters=32, kernel_size=(3, 3), activation="relu", input_shape=(100, 100, 1)))
+model.add(Conv2D(filters=64, kernel_size=(3, 3), activation="relu", input_shape=(100, 100, 1)))
 model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.25))
 model.add(Conv2D(filters=64, kernel_size=(3, 3), activation='relu'))
 model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.25))
 model.add(Flatten())
-model.add(Dense(128, activation='relu'))
-model.add(Dropout(0.5))
 model.add(Dense(64, activation='relu'))
+model.add(Dropout(0.5))
+model.add(Dense(32, activation='relu'))
 model.add(Dropout(0.5))
 model.add(Dense(4, activation='softmax'))
 
@@ -101,9 +104,56 @@ model.summary()
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test), batch_size=64)
+# Fit multiple models (mid and late models train more even distribution of mild and moderate demented)
+model.fit(X_train, y_train, epochs=30, validation_data=(X_test, y_test), batch_size=64)
 
-model.evaluate(X_test, y_test)
+mid_model = Sequential()
+mid_model.add(Conv2D(filters=64, kernel_size=(3, 3), activation="relu", input_shape=(100, 100, 1)))
+mid_model.add(MaxPooling2D(pool_size=(2, 2)))
+mid_model.add(Dropout(0.25))
+mid_model.add(Conv2D(filters=64, kernel_size=(3, 3), activation='relu'))
+mid_model.add(MaxPooling2D(pool_size=(2, 2)))
+mid_model.add(Dropout(0.25))
+mid_model.add(Flatten())
+mid_model.add(Dense(64, activation='relu'))
+mid_model.add(Dropout(0.5))
+mid_model.add(Dense(32, activation='relu'))
+mid_model.add(Dropout(0.5))
+mid_model.add(Dense(4, activation='softmax'))
+
+mid_model.summary()
+
+mid_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+mid_model.fit(X_train[len(X_train)//2:], y_train[len(y_train)//2:], epochs=30, validation_data=(X_test[len(X_test)//2:], y_test[len(y_test)//2:]), batch_size=64)
+
+late_model = Sequential()
+late_model.add(Conv2D(filters=64, kernel_size=(3, 3), activation="relu", input_shape=(100, 100, 1)))
+late_model.add(MaxPooling2D(pool_size=(2, 2)))
+late_model.add(Dropout(0.25))
+late_model.add(Conv2D(filters=64, kernel_size=(3, 3), activation='relu'))
+late_model.add(MaxPooling2D(pool_size=(2, 2)))
+late_model.add(Dropout(0.25))
+late_model.add(Flatten())
+late_model.add(Dense(64, activation='relu'))
+late_model.add(Dropout(0.5))
+late_model.add(Dense(32, activation='relu'))
+late_model.add(Dropout(0.5))
+late_model.add(Dense(4, activation='softmax'))
+
+late_model.summary()
+
+late_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+late_model.fit(X_train[len(X_train)//4:], y_train[len(y_train)//4:], epochs=30, validation_data=(X_test[len(X_test)//4:], y_test[len(y_test)//4:]), batch_size=64)
+
+vloss, vacc = model.evaluate(X_test, y_test)
+mid_vloss, mid_vacc = mid_model.evaluate(X_test, y_test)
+late_vloss, late_vacc = late_model.evaluate(X_test, y_test)
+
+print(f'Initial >>> Loss: {vloss}, Accuracy: {vacc}')
+print(f'Mid >>> Loss: {mid_vloss}, Accuracy: {mid_vacc}')
+print(f'Late >>> Loss: {late_vloss}, Accuracy: {late_vacc}')
 
 def make_ts_prediction(idx):
     # map index/encoded value with stage label
@@ -112,23 +162,29 @@ def make_ts_prediction(idx):
                   2 : 'MildDemented',
                   3 : 'ModerateDemented'}
     
-    # Make prediction and save prediction and true value as labels
-    ts_pred = model.predict(X_test[idx:idx+1])
-    pred_label = label_dict[np.argmax(ts_pred)]
+    # USE AVG OF SCORES FOR MORE ACCURATE VOTING
+    init_mp = model.predict(X_test[idx:idx+1])
+    mid_mp = mid_model.predict(X_test[idx:idx+1])
+    late_mp = late_model.predict(X_test[idx:idx+1])
+    ensemble = (init_mp + mid_mp + late_mp)/3
+    
+    # Get prediction as most voted
+    pred_label = label_dict[np.argmax(ensemble)]
     true_label = label_dict[np.argmax(y_test[idx:idx+1])]
+    
+    #Show sample
+    show_sample(X_test, idx, label=true_label)
     
     # Compare labels, print prediction values
     if pred_label == true_label:
-        print(ts_pred)
         return f'Correct prediction on {true_label}'
     else:
-        print(ts_pred)
         return f'False prediction on {true_label}'
     
     
 # Make some predictions 
-for idx in range(800,810):
+for idx in range(0,20):
     print(make_ts_prediction(idx))    
 
-for idx in range(1150,1160):
+for idx in range(1259,1279):
     print(make_ts_prediction(idx))
